@@ -73,6 +73,12 @@ function getPRDetails() {
         };
     });
 }
+function formatLine(change) {
+    const lineNum = getLineNumber(change);
+    const prefix = change.type === 'add' ? '+' : change.type === 'del' ? '-' : ' ';
+    const content = change.content || '';
+    return `${String(lineNum).padStart(4, ' ')} ${prefix} ${content}`;
+}
 function getDiff(owner, repo, pull_number) {
     return __awaiter(this, void 0, void 0, function* () {
         const response = yield octokit.pulls.get({
@@ -122,11 +128,7 @@ PR Description: ${prDetails.description}
 
 Code Changes
 -----------
-${chunk.changes.map(c => {
-        const lineNum = getLineNumber(c);
-        const prefix = c.type === 'add' ? '+' : c.type === 'del' ? '-' : ' ';
-        return `${lineNum.toString().padStart(4)} ${prefix} ${c.content}`;
-    }).join('\n')}
+${chunk.changes.map(formatLine).join('\n')}
 
 Review Requirements
 -----------------
@@ -214,11 +216,19 @@ function getAIResponse(prompt) {
     });
 }
 function getLineNumber(change) {
-    if (change.type === 'add')
+    if (!change)
+        return 0;
+    if (change.type === 'add' && typeof change.ln === 'number') {
         return change.ln;
-    if (change.type === 'del')
+    }
+    if (change.type === 'del' && typeof change.ln1 === 'number') {
         return change.ln1;
-    return change.ln2 || change.ln1 || 0;
+    }
+    if (typeof change.ln2 === 'number')
+        return change.ln2;
+    if (typeof change.ln1 === 'number')
+        return change.ln1;
+    return 0;
 }
 function createComment(file, chunk, aiResponse) {
     const comments = [];

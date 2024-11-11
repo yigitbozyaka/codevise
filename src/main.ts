@@ -39,6 +39,14 @@ async function getPRDetails(): Promise<PRDetails> {
   };
 }
 
+function formatLine(change: any): string {
+  const lineNum = getLineNumber(change);
+  const prefix = change.type === 'add' ? '+' : change.type === 'del' ? '-' : ' ';
+  const content = change.content || '';
+  
+  return `${String(lineNum).padStart(4, ' ')} ${prefix} ${content}`;
+}
+
 async function getDiff(
   owner: string,
   repo: string,
@@ -94,11 +102,7 @@ PR Description: ${prDetails.description}
 
 Code Changes
 -----------
-${chunk.changes.map(c => {
-  const lineNum = getLineNumber(c);
-  const prefix = c.type === 'add' ? '+' : c.type === 'del' ? '-' : ' ';
-  return `${lineNum.toString().padStart(4)} ${prefix} ${c.content}`;
-}).join('\n')}
+${chunk.changes.map(formatLine).join('\n')}
 
 Review Requirements
 -----------------
@@ -186,9 +190,18 @@ async function getAIResponse(prompt: string): Promise<string | null> {
 }
 
 function getLineNumber(change: any): number {
-  if (change.type === 'add') return change.ln;
-  if (change.type === 'del') return change.ln1;
-  return change.ln2 || change.ln1 || 0;
+  if (!change) return 0;
+  
+  if (change.type === 'add' && typeof change.ln === 'number') {
+    return change.ln;
+  }
+  if (change.type === 'del' && typeof change.ln1 === 'number') {
+    return change.ln1;
+  }
+  if (typeof change.ln2 === 'number') return change.ln2;
+  if (typeof change.ln1 === 'number') return change.ln1;
+  
+  return 0;
 }
 
 function createComment(
