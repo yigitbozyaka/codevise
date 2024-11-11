@@ -109,20 +109,34 @@ function analyzeCode(parsedDiff, prDetails) {
         return comments;
     });
 }
+function getLineNumber(change) {
+    if (!change)
+        return 0;
+    if (change.type === 'add' && typeof change.ln === 'number') {
+        return change.ln;
+    }
+    if (change.type === 'del' && typeof change.ln1 === 'number') {
+        return change.ln1;
+    }
+    if (typeof change.ln2 === 'number')
+        return change.ln2;
+    if (typeof change.ln1 === 'number')
+        return change.ln1;
+    return 0;
+}
 function createPrompt(file, chunk, prDetails) {
     var _a;
     const fileExt = ((_a = file.to) === null || _a === void 0 ? void 0 : _a.split('.').pop()) || '';
     const addedLines = chunk.changes.filter(c => c.type === 'add').length;
     const deletedLines = chunk.changes.filter(c => c.type === 'del').length;
     return `
-Code Review Analysis Request
-===========================
+You are an expert code reviewer. Review the following code changes and provide structured feedback in Markdown format.
 
 Context
 -------
 File: ${file.to}
 Language: ${fileExt.toUpperCase()}
-Lines Changed: +${addedLines}/-${deletedLines}
+Lines Modified: +${addedLines}/-${deletedLines}
 PR Title: ${prDetails.title}
 PR Description: ${prDetails.description}
 
@@ -130,68 +144,76 @@ Code Changes
 -----------
 ${chunk.changes.map(formatLine).join('\n')}
 
-Review Requirements
+Review Instructions
 -----------------
-1. Code Quality Assessment:
-   - Identify potential bugs or logic errors
-   - Check for edge cases
-   - Assess performance implications
-   - Verify error handling
-
-2. Security Review:
-   - Check for security vulnerabilities
-   - Validate input handling
-   - Verify authentication/authorization
-
-3. Best Practices:
-   - Code style and consistency
-   - Design patterns usage
+1. Analyze the code for:
+   - Potential bugs or logic errors
+   - Security vulnerabilities
+   - Performance implications
+   - Code style and best practices
+   - Edge cases
+   - Error handling
    - Documentation completeness
 
-Response Format
--------------
-{
-  "summary": "Brief description of changes (max 100 words)",
-  "risk_level": "LOW|MEDIUM|HIGH",
-  "triage": "APPROVED|NEEDS_REVIEW",
-  "issues": [
-    {
-      "line_start": <number>,
-      "line_end": <number>,
-      "type": "BUG|SECURITY|IMPROVEMENT",
-      "severity": "LOW|MEDIUM|HIGH",
-      "description": "Issue description",
-      "suggestion": "Code suggestion if applicable"
-    }
-  ]
-}
+2. Provide your feedback in this exact Markdown format:
 
-Important:
-- Focus only on the visible code changes
-- Provide specific, actionable feedback
-- Include line numbers for all issues
-- Be concise but thorough
+### Summary
+[Concise description of the changes in 1-2 sentences]
+
+### Risk Assessment
+**Level**: LOW|MEDIUM|HIGH
+**Triage**: APPROVED|NEEDS_REVIEW
+
+### Review Comments
+[For each issue, use the following format:]
+
+#### Issue 1
+- **Type**: BUG|SECURITY|IMPROVEMENT
+- **Location**: Lines X-Y
+- **Severity**: LOW|MEDIUM|HIGH
+- **Description**: [Clear explanation of the issue]
+- **Suggestion**:
+\`\`\`suggestion
+[Your code suggestion if applicable]
+\`\`\`
+
+[Repeat the Issue format for each additional issue found]
+
+Important Notes:
+- Keep comments specific to the visible changes
+- Include exact line numbers
+- Provide actionable feedback
+- Focus on correctness, security, and maintainability
 `;
 }
 function processAIResponse(response) {
+    if (response.includes('### Summary') && response.includes('### Risk Assessment')) {
+        return response;
+    }
     try {
         const parsed = JSON.parse(response);
         return `
 ### Summary
 ${parsed.summary}
 
-### Risk Level: ${parsed.risk_level}
-### Triage: ${parsed.triage}
+### Risk Assessment
+**Level**: ${parsed.risk_level}
+**Triage**: ${parsed.triage}
 
-${parsed.issues.map((issue) => `
-#### ${issue.type} (Severity: ${issue.severity})
-- Lines ${issue.line_start}-${issue.line_end}
-- ${issue.description}
-${issue.suggestion ? `\n\`\`\`suggestion\n${issue.suggestion}\n\`\`\`` : ''}`).join('\n')}
-    `.trim();
+### Review Comments
+${parsed.issues.map((issue, index) => `
+#### Issue ${index + 1}
+- **Type**: ${issue.type}
+- **Location**: Lines ${issue.line_start}-${issue.line_end}
+- **Severity**: ${issue.severity}
+- **Description**: ${issue.description}${issue.suggestion ? `
+- **Suggestion**:
+\`\`\`suggestion
+${issue.suggestion}
+\`\`\`` : ''}`).join('\n')}
+`.trim();
     }
     catch (e) {
-        // Fallback for non-JSON responses
         return response;
     }
 }
@@ -215,30 +237,13 @@ function getAIResponse(prompt) {
         }
     });
 }
-function getLineNumber(change) {
-    if (!change)
-        return 0;
-    if (change.type === 'add' && typeof change.ln === 'number') {
-        return change.ln;
-    }
-    if (change.type === 'del' && typeof change.ln1 === 'number') {
-        return change.ln1;
-    }
-    if (typeof change.ln2 === 'number')
-        return change.ln2;
-    if (typeof change.ln1 === 'number')
-        return change.ln1;
-    return 0;
-}
 function createComment(file, chunk, aiResponse) {
     const comments = [];
     const firstChange = chunk.changes.find(change => change.type === 'add');
-    const lastChange = chunk.changes.reverse().find(change => change.type === 'add');
     const lineNumber = firstChange ? getLineNumber(firstChange) :
         (chunk.newStart || chunk.oldStart || 0);
-    const lineRange = `Lines ${chunk.newStart}-${chunk.newStart + chunk.newLines - 1}`;
     comments.push({
-        body: `**${lineRange}**\n\n${aiResponse}`,
+        body: aiResponse,
         path: file.to,
         line: lineNumber,
     });
