@@ -75,56 +75,96 @@ async function analyzeCode(
 }
 
 function createPrompt(file: File, chunk: Chunk, prDetails: PRDetails): string {
+  const fileExt = file.to?.split('.').pop() || '';
+  
+  const addedLines = chunk.changes.filter(c => c.type === 'add').length;
+  const deletedLines = chunk.changes.filter(c => c.type === 'del').length;
+  
   return `
-Review Instructions
+Code Review Analysis Request
+===========================
 
-Please review the following code diff in the file ${file.to} with the pull request title and description in mind.
+Context
+-------
+File: ${file.to}
+Language: ${fileExt.toUpperCase()}
+Lines Changed: +${addedLines}/-${deletedLines}
+PR Title: ${prDetails.title}
+PR Description: ${prDetails.description}
 
-PR Title:
-${prDetails.title}
+Code Changes
+-----------
+${chunk.changes.map(c => {
+  const lineNum = getLineNumber(c);
+  const prefix = c.type === 'add' ? '+' : c.type === 'del' ? '-' : ' ';
+  return `${lineNum.toString().padStart(4)} ${prefix} ${c.content}`;
+}).join('\n')}
 
-PR Description:
+Review Requirements
+-----------------
+1. Code Quality Assessment:
+   - Identify potential bugs or logic errors
+   - Check for edge cases
+   - Assess performance implications
+   - Verify error handling
 
-${prDetails.description}
+2. Security Review:
+   - Check for security vulnerabilities
+   - Validate input handling
+   - Verify authentication/authorization
 
-Git diff to review:
+3. Best Practices:
+   - Code style and consistency
+   - Design patterns usage
+   - Documentation completeness
 
-${chunk.content}
-${chunk.changes
-      // @ts-expect-error - ln and ln2 exists where needed
-      .map((c) => `${c.ln ? c.ln : c.ln2} ${c.content}`)
-      .join("\n")}
+Response Format
+-------------
+{
+  "summary": "Brief description of changes (max 100 words)",
+  "risk_level": "LOW|MEDIUM|HIGH",
+  "triage": "APPROVED|NEEDS_REVIEW",
+  "issues": [
+    {
+      "line_start": <number>,
+      "line_end": <number>,
+      "type": "BUG|SECURITY|IMPROVEMENT",
+      "severity": "LOW|MEDIUM|HIGH",
+      "description": "Issue description",
+      "suggestion": "Code suggestion if applicable"
+    }
+  ]
+}
 
-Task:
-
- 1. Summary:
- - Write a succinct summary (within 100 words) of the changes in the code diff. The summary should mention any alterations to exported function signatures, global data structures, variables, or changes that might affect the external interface or behavior of the code.
- 2. Triage:
- - Below the summary, provide a triage decision, either NEEDS_REVIEW or APPROVED, following these guidelines:
- - Use NEEDS_REVIEW if the diff involves any changes to logic, control structures, or function calls that might impact code behavior.
- - Use APPROVED only if the changes are minor (e.g., typos, formatting, or variable renaming) and do not affect functionality.
- - Strictly format the triage section as follows:
-
-  - TRIAGE: <NEEDS_REVIEW or APPROVED>
-
-Additional Review Guidance:
-
- - For each section of the new hunk (annotated with line numbers), identify substantive issues within the line number range.
- - Line Number Ranges: Provide the exact line number range for each issue (inclusive). Focus on issues within the provided context only.
- - Comment Scope: Comments should be objective, specific, and limited to the code changes. Avoid speculative remarks about the larger impact or system-wide consequences outside of the given context.
-
-Code Suggestions:
-
- - If necessary, provide replacement code suggestions in suggestion blocks. Use the correct line number range that maps to the exact lines in the diff.
- - If proposing new code snippets, use fenced code blocks and specify the correct language identifier.
-
-Important Restrictions:
-
- - Avoid general feedback, summaries, or compliments.
- - Do not mention potential impacts on the overall system unless evident from the changes. Focus only on the provided code context.
- - Do not request additional reviews from the developer or question their testing or intentions.
- - Ensure that line number ranges and replacement snippets are accurate and specific.
+Important:
+- Focus only on the visible code changes
+- Provide specific, actionable feedback
+- Include line numbers for all issues
+- Be concise but thorough
 `
+}
+
+function processAIResponse(response: string): string {
+  try {
+    const parsed = JSON.parse(response);
+    return `
+### Summary
+${parsed.summary}
+
+### Risk Level: ${parsed.risk_level}
+### Triage: ${parsed.triage}
+
+${parsed.issues.map((issue: any) => `
+#### ${issue.type} (Severity: ${issue.severity})
+- Lines ${issue.line_start}-${issue.line_end}
+- ${issue.description}
+${issue.suggestion ? `\n\`\`\`suggestion\n${issue.suggestion}\n\`\`\`` : ''}`
+).join('\n')}
+    `.trim();
+  } catch (e) {
+    // Fallback for non-JSON responses
+    return response;
+  }
 }
 
 async function getAIResponse(prompt: string): Promise<string | null> {
@@ -133,12 +173,22 @@ async function getAIResponse(prompt: string): Promise<string | null> {
       model: LLM_MODEL,
       system: systemMessage,
       prompt: prompt,
+      options: {
+        temperature: 0.3,
+        top_p: 0.9,
+      }
     });
-    return res.response;
+    return processAIResponse(res.response);
   } catch (error) {
     core.error(`Error with AI response: ${error}`);
     return null;
   }
+}
+
+function getLineNumber(change: any): number {
+  if (change.type === 'add') return change.ln;
+  if (change.type === 'del') return change.ln1;
+  return change.ln2 || change.ln1 || 0;
 }
 
 function createComment(
@@ -148,16 +198,25 @@ function createComment(
 ): Array<{ body: string; path: string; line: number }> {
   const comments: Array<{ body: string; path: string; line: number }> = [];
   
-  const firstChangeWithLine = chunk.changes.find(change => 'ln' in change || 'ln2' in change);
-  const currentLineNumber = firstChangeWithLine ? (firstChangeWithLine as any).ln ?? (firstChangeWithLine as any).ln2 : 0;
-
+  const firstChange = chunk.changes.find(change => change.type === 'add');
+  const lastChange = chunk.changes.reverse().find(change => change.type === 'add');
+  
+  const lineNumber = firstChange ? getLineNumber(firstChange) : 
+                    (chunk.newStart || chunk.oldStart || 0);
+  
+  const lineRange = `Lines ${chunk.newStart}-${chunk.newStart + chunk.newLines - 1}`;
+  
   comments.push({
-    body: aiResponse,
+    body: `**${lineRange}**\n\n${aiResponse}`,
     path: file.to!,
-    line: currentLineNumber,
+    line: lineNumber,
   });
 
-  return comments.filter(comment => comment.path && comment.line && comment.body);
+  return comments.filter(comment => 
+    comment.path && 
+    comment.line > 0 && 
+    comment.body.trim().length > 0
+  );
 }
 
 
