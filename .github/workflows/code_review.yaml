@@ -1,0 +1,28 @@
+name: Code Review with ollama
+on:
+  pull_request:
+    types:
+      - opened
+      - synchronize
+  issue_comment: 
+    types: 
+      - created
+permissions: write-all
+env:
+    ACTIONS_RUNNER_DEBUG: true
+jobs:
+  code_review:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+      - name: Code Review
+        uses: yigitbozyaka/codevise@main
+        with:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          APP_ID: ${{ secrets.APP_ID }}
+          PRIVATE_KEY: ${{ secrets.PRIVATE_KEY }}
+          INSTALLATION_ID: ${{ secrets.INSTALLATION_ID }}
+          OLLAMA_ADDRESS: ${{ secrets.OLLAMA_ADDRESS }}
+          LLM_MODEL: ${{ secrets.LLM_MODEL }}
+          exclude: "yarn.lock,dist/**"
