@@ -6,20 +6,16 @@ import { Octokit } from "@octokit/rest";
 import parseDiff, { Chunk, File } from "parse-diff";
 import { minimatch } from "minimatch";
 
-const APP_ID: string = core.getInput("APP_ID");
-const PRIVATE_KEY: string = core.getInput("PRIVATE_KEY");
-const INSTALLATION_ID: string = core.getInput("INSTALLATION_ID");
+const GITHUB_TOKEN: string = core.getInput("GITHUB_TOKEN");
 const OLLAMA_ADDRESS: string = core.getInput("OLLAMA_ADDRESS");
 const LLM_MODEL: string = core.getInput("LLM_MODEL");
 
 const octokit = new Octokit({
-  authStrategy: createAppAuth,
   auth: {
-    appId: APP_ID,
-    privateKey: PRIVATE_KEY,
-    installationId: INSTALLATION_ID,
-  },
-});const ollama = new Ollama({ host: OLLAMA_ADDRESS });
+    GITHUB_TOKEN
+  }
+});
+const ollama = new Ollama({ host: OLLAMA_ADDRESS });
 
 const systemMessage: string = core.getInput("SYSTEM_MESSAGE");
 

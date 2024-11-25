@@ -1,15 +1,8 @@
 name: "Codegemma Review"
 description: "Perform code reviews and comment on diffs using codellama."
 inputs:
-  APP_ID:
-    description: 'GitHub App ID'
-    required: true
-  PRIVATE_KEY:
-    description: 'GitHub App private key'
-    required: true
-  INSTALLATION_ID:
-    description: 'GitHub App installation ID'
-    required: true
+  GITHUB_TOKEN:
+    description: ""GitHub token for repository interactions."
   OLLAMA_ADDRESS:
     description: "The address of your self deployed ollama service."
     required: true

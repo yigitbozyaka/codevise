@@ -20,9 +20,6 @@ jobs:
         uses: yigitbozyaka/codevise@main
         with:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          APP_ID: ${{ secrets.APP_ID }}
-          PRIVATE_KEY: ${{ secrets.PRIVATE_KEY }}
-          INSTALLATION_ID: ${{ secrets.INSTALLATION_ID }}
           OLLAMA_ADDRESS: ${{ secrets.OLLAMA_ADDRESS }}
           LLM_MODEL: ${{ secrets.LLM_MODEL }}
           exclude: "yarn.lock,dist/**"
