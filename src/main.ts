@@ -1,7 +1,6 @@
 import { readFileSync } from "fs";
 import * as core from "@actions/core";
 import { Ollama } from "ollama";
-import { createAppAuth } from "@octokit/auth-app";
 import { Octokit } from "@octokit/rest";
 import parseDiff, { Chunk, File } from "parse-diff";
 import { minimatch } from "minimatch";
@@ -10,11 +9,7 @@ const GITHUB_TOKEN: string = core.getInput("GITHUB_TOKEN");
 const OLLAMA_ADDRESS: string = core.getInput("OLLAMA_ADDRESS");
 const LLM_MODEL: string = core.getInput("LLM_MODEL");
 
-const octokit = new Octokit({
-  auth: {
-    GITHUB_TOKEN
-  }
-});
+const octokit = new Octokit({ auth: GITHUB_TOKEN });
 const ollama = new Ollama({ host: OLLAMA_ADDRESS });
 
 const systemMessage: string = core.getInput("SYSTEM_MESSAGE");
